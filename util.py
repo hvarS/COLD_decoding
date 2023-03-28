@@ -26,13 +26,16 @@ from util import *
 def embed_inputs(embedding, logits, x_onehot=None, z_onehot=None, device='cuda'):
     '''
     embeds inputs in a dense representation, before passing them to the model
+    logits: [batch_size, length, vocab_size]
+    embedding: [vocab_size, 768]
     '''
     # typically we embed a one-hot vector. But here since we work we work with dense representations,
     # we have softmax here to make sure that all the values of the input logits sum to one (similar to a 1-hot vector).
-    probs = F.softmax(logits, dim=-1)
+    
+    probs = F.softmax(logits, dim=-1)   # batch_size, length, vocab_size
 
     if x_onehot is not None:
-        probs = torch.cat((x_onehot.type(torch.FloatTensor), probs.type(torch.FloatTensor)), dim=1)
+        probs = torch.cat((x_onehot.type(torch.FloatTensor), probs.type(torch.FloatTensor)), dim=1) # [batch_size, 1+length, vocab_size]
     if z_onehot is not None:
         probs = torch.cat((probs.type(torch.FloatTensor), z_onehot.type(torch.FloatTensor)), dim=1)
     probs = probs.to(device)
@@ -129,6 +132,10 @@ def one_hot(tensor, dimension):
 
 
 def initialize(model, x, length, temperature, device):
+    """
+        x: [batch_size, len_x]
+        length: length of output required
+    """
     if x.dim() == 1:
         x = x.unsqueeze(0)
     past = None
@@ -137,8 +144,8 @@ def initialize(model, x, length, temperature, device):
     for i in range(length):
         # for the first iteration, `past` is None
         if past is None:
-            x_last_token = x[:, -1:]
-            last_token_embedding = model.get_input_embeddings()(x_last_token)
+            x_last_token = x[:, -1:]    #[batch_size, 1]
+            last_token_embedding = model.get_input_embeddings()(x_last_token)   # [batch_size, 1, 768 ]
 
             # if the input length is longer than a single token
             if x.shape[1] > 1:
@@ -147,12 +154,12 @@ def initialize(model, x, length, temperature, device):
                 past = model_outputs.past_key_values
 
         model_outputs = model(past_key_values=past, inputs_embeds=last_token_embedding)
-        logits = model_outputs.logits
-        past = model_outputs.past_key_values
+        logits = model_outputs.logits   #[batch_size, 1, vocab_size]
+        past = model_outputs.past_key_values #[12, 2,1, 12, 1, 64 ]
 
-        logits = logits[:, -1, :] / temperature
-        logits = logits.unsqueeze(1)
-        logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)
+        logits = logits[:, -1, :] / temperature #[batch_size, vocab_size] Last Token Logit
+        logits = logits.unsqueeze(1)   # [batch_size, 1,  vocab_size]
+        logits_so_far = logits if logits_so_far is None else torch.cat((logits_so_far, logits), dim=1)  #[batch_size, i+1, vocab_size]
         last_token_embedding = embed_inputs(embedding=model.get_input_embeddings().weight, logits=logits, device=device)
 
     return logits_so_far
@@ -261,8 +268,8 @@ def soft_forward(model, x_onehot, y_logits, x_past=None, detach=True):
     '''
     computes logits for $y$, based on a fixed context $y$ and the current logit distribution of $y$
     :param model:
-    :param x_onehot:
-    :param y_logits:
+    :param x_onehot: [batch_size, 1 , vocab_size]
+    :param y_logits:    [batch_size, length, vocab_size]
     :return:
     '''
     xy_embeds = embed_inputs(
@@ -271,7 +278,8 @@ def soft_forward(model, x_onehot, y_logits, x_past=None, detach=True):
         x_onehot=x_onehot,
         device=x_onehot.device
     )
-    xy_logits = model(past_key_values=x_past, inputs_embeds=xy_embeds).logits
+    # xy_embeds: [batch_size, 1+length, 768]
+    xy_logits = model(past_key_values=x_past, inputs_embeds=xy_embeds).logits   #[batch_size, 1+length, vocab_size]
     x_length = x_onehot.shape[1]
     y_logits = xy_logits[:, x_length - 1:-1, :]
     if detach:

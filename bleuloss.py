@@ -36,14 +36,14 @@ def batch_log_bleulosscnn_ae(decoder_outputs, target_idx, ngram_list, trans_len=
     out = cost_nll
     sum_gram = 0. #FloatTensor([0.])
 ###########################
-    zero = torch.tensor(0.0).cuda()
+    zero = torch.tensor(0.0)
     target_expand = target_idx.view(batch_size,1,1,-1).expand(-1,-1,output_len,-1)
     out = torch.where(target_expand==pad, zero, out)
 ############################
     for cnt, ngram in enumerate(ngram_list):
         if ngram > output_len:
             continue
-        eye_filter = torch.eye(ngram).view([1, 1, ngram, ngram]).cuda()
+        eye_filter = torch.eye(ngram).view([1, 1, ngram, ngram])
         term = nn.functional.conv2d(out, eye_filter)/ngram
         if ngram < decoder_outputs.size()[1]:
             term = term.squeeze(1)

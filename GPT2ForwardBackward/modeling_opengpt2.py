@@ -632,6 +632,7 @@ DEPARALLELIZE_DOCSTRING = r"""
     "The bare OpenGPT2 Model transformer outputting raw hidden-states without any specific head on top.",
     OpenGPT2_START_DOCSTRING,
 )
+
 class OpenGPT2Model(OpenGPT2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
@@ -709,7 +710,7 @@ class OpenGPT2Model(OpenGPT2PreTrainedModel):
 
     @add_start_docstrings_to_model_forward(OpenGPT2_INPUTS_DOCSTRING)
     @add_code_sample_docstrings(
-        tokenizer_class=_TOKENIZER_FOR_DOC,
+        processor_class=_TOKENIZER_FOR_DOC,
         checkpoint="gpt2",
         output_type=BaseModelOutputWithPastAndCrossAttentions,
         config_class=_CONFIG_FOR_DOC,
@@ -977,7 +978,7 @@ class OpenGPT2LMHeadModel(OpenGPT2PreTrainedModel):
 
     @add_start_docstrings_to_model_forward(OpenGPT2_INPUTS_DOCSTRING)
     @add_code_sample_docstrings(
-        tokenizer_class=_TOKENIZER_FOR_DOC,
+        processor_class=_TOKENIZER_FOR_DOC,
         checkpoint="gpt2",
         output_type=CausalLMOutputWithCrossAttentions,
         config_class=_CONFIG_FOR_DOC,
@@ -1245,7 +1246,7 @@ class OpenGPT2ForSequenceClassification(OpenGPT2PreTrainedModel):
 
     @add_start_docstrings_to_model_forward(OpenGPT2_INPUTS_DOCSTRING)
     @add_code_sample_docstrings(
-        tokenizer_class=_TOKENIZER_FOR_DOC,
+        processor_class=_TOKENIZER_FOR_DOC,
         checkpoint="microsoft/dialogrpt",
         output_type=SequenceClassifierOutputWithPast,
         config_class=_CONFIG_FOR_DOC,
