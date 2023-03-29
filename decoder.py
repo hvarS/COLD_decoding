@@ -15,6 +15,7 @@ from util import (
 )
 # TODO : Encode, Tensorify and One Hot the Input text
 def eto(text, tokenizer, device):
+    
     text_ = tokenizer.encode(text)
     text_t = torch.tensor(text_, device=device, dtype=torch.long)
     text_onehot = one_hot(text_t, dimension = len(tokenizer))

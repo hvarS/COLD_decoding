@@ -18,6 +18,9 @@ from nltk.tokenize import word_tokenize
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from transformers import DistilBertModel, DistilBertTokenizer
 
+import math 
+from annoy import AnnoyIndex
+
 from cold_args import options
 from decoder import decode
 from model.inductiveAttentionModel import GPT2InductiveAttentionHeadModel
@@ -164,8 +167,11 @@ def load_my_model(args, device):
     )
     
     ########## Loading Weights for the Model to generate ###############
+    universal_model.to(device)
     universal_model.load_state_dict(torch.load(CKPT,map_location=device))
-    universal_model.language_model = universal_model.language_model.to(device)
+
+    universal_model.annoy_base_constructor()
+    _ = universal_model.lm_expand_wtes_with_items_annoy_base()          
 
 
     return universal_model.language_model, gpt_tokenizer

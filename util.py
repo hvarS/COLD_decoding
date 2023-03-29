@@ -29,6 +29,7 @@ def embed_inputs(embedding, logits, x_onehot=None, z_onehot=None, device='cuda')
     # we have softmax here to make sure that all the values of the input logits sum to one (similar to a 1-hot vector).
     
     probs = F.softmax(logits, dim=-1)   # batch_size, length, vocab_size
+    required_length = probs.shape[2]
 
     if x_onehot is not None:
         probs = torch.cat((x_onehot.type(torch.FloatTensor), probs.type(torch.FloatTensor)), dim=1) # [batch_size, 1+length, vocab_size]
@@ -36,7 +37,7 @@ def embed_inputs(embedding, logits, x_onehot=None, z_onehot=None, device='cuda')
         probs = torch.cat((probs.type(torch.FloatTensor), z_onehot.type(torch.FloatTensor)), dim=1)
     probs = probs.to(device)
 
-    return torch.matmul(probs, embedding)
+    return torch.matmul(probs, embedding[:required_length,:])
 
 
 def _greedy(logits):
@@ -167,7 +168,8 @@ def decode_with_model_topk(model, y_logits, topk, x_onehot, x_past, tokenizer, e
     assert x_onehot.shape[1] == 1, x_onehot.shape
     length = y_logits.shape[1]
     past = x_past
-    input_embeds = torch.matmul(x_onehot.float(), model.get_input_embeddings().weight)
+    required_vocab_size = x_onehot.shape[2]
+    input_embeds = torch.matmul(x_onehot.float(), model.get_input_embeddings().weight[:required_vocab_size,:])
     mask_t_all = None
     logits_so_far = None
     for i in range(length):
@@ -184,7 +186,8 @@ def decode_with_model_topk(model, y_logits, topk, x_onehot, x_past, tokenizer, e
                 y_logits_i_topk = top_k_filter_3d(y_logits[:,i:i+1,:], topk, mask=mask_t) / 0.001
             else:
                 y_logits_i_topk = top_k_filter_3d(y_logits[:,i:i+1,:], topk, mask=mask_t, extra_mask=extra_mask[:,i:i+1,:]) / 0.001
-            input_embeds = torch.matmul(F.softmax(y_logits_i_topk, dim=-1), model.get_input_embeddings().weight)
+            required_vocab_size = y_logits_i_topk.shape[2]
+            input_embeds = torch.matmul(F.softmax(y_logits_i_topk, dim=-1), model.get_input_embeddings().weight[:required_vocab_size,:])
     return get_text_from_logits(
         top_k_filter_3d(y_logits, topk, mask=mask_t_all, extra_mask=extra_mask),
         tokenizer)
