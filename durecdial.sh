@@ -1,11 +1,8 @@
-#!/bin/bash
-
-## CommonGen
-
 python3 cold_decoding.py \
 	--seed 12 \
 	--mode lexical_generation \
-	--pretrained_model gpt2  \
+    --kb_path ../KBConvRec/mese_baseline/data/kb/durecdial2_db \
+	--pretrained_model ../KBConvRec/mese_baseline/runs/new_model_rec.pt  \
 	--init-temp 1 \
     --length 10 \
 	--max-length 40 \
@@ -26,10 +23,8 @@ python3 cold_decoding.py \
 	--large-noise-iters 50,500,1000,1500 \
 	--large_gs_std 1,0.5,0.1,0.05  \
 	--stepsize-ratio 1  \
-    --batch-size 32 \
+    --batch-size 1 \
     --repeat-batch 8 \
     --print-every 200 \
-    --input-file "./data/commongen/commongen.dev.jsonl" \
-	--output-dir "./data/commongen/" \
-
-
+    --input-file "./data/durecdial/durecdial2.dev.jsonl" \
+	--output-dir "./data/durecdial/" \

@@ -141,6 +141,8 @@ def initialize(model, x, length, temperature, device):
         # for the first iteration, `past` is None
         if past is None:
             x_last_token = x[:, -1:]    #[batch_size, 1]
+            print(model.device)
+            print(x_last_token)
             last_token_embedding = model.get_input_embeddings()(x_last_token)   # [batch_size, 1, 768 ]
 
             # if the input length is longer than a single token

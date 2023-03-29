@@ -16,9 +16,13 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
+from transformers import DistilBertModel, DistilBertTokenizer
 
 from cold_args import options
 from decoder import decode
+from model.inductiveAttentionModel import GPT2InductiveAttentionHeadModel
+from model.mese import C_UniversalCRSModel
+
 
 stop_words = set(stopwords.words('english'))
 
@@ -71,7 +75,11 @@ def lexical_generation(red, model, tokenizer, device, args):
         constraints = d["concept_set"].split("#")
 
         constraints = ' '.join(constraints)
-        x = "<|endoftext|>"
+        # x = "<|endoftext|>"
+        if "starter" in d:
+            x = d["starter"]
+        else:
+            x = '<|endoftext|>'
         z = constraints
         z_keywords = constraints
 
@@ -108,6 +116,60 @@ def lexical_generation(red, model, tokenizer, device, args):
     print("outputs: %s" % outfile)
 
 
+def load_pretrained_model(args, device):
+    # Load pretrained model
+    model = GPT2LMHeadModel.from_pretrained(
+        args.pretrained_model, output_hidden_states=True,
+        resid_pdrop=0, embd_pdrop=0, attn_pdrop=0, summary_first_dropout=0)
+    model.to(device)
+
+    # Load tokenizer
+    tokenizer = GPT2Tokenizer.from_pretrained(args.pretrained_model)
+
+    return model, tokenizer
+
+
+def load_my_model(args, device):
+    CKPT = args.pretrained_model
+    # device = torch.device(0)
+
+    bert_tokenizer = DistilBertTokenizer.from_pretrained("../../../offline_transformers/distilbert-base-uncased/tokenizer/")
+    bert_model_recall = DistilBertModel.from_pretrained('../../../offline_transformers/distilbert-base-uncased/model/')
+    bert_model_rerank = DistilBertModel.from_pretrained('../../../offline_transformers/distilbert-base-uncased/model/')
+    gpt_tokenizer = GPT2Tokenizer.from_pretrained("../../../offline_transformers/gpt2/tokenizer/")
+    gpt2_model = GPT2InductiveAttentionHeadModel.from_pretrained('../../../offline_transformers/gpt2/model/')
+
+    
+    REC_TOKEN = "[REC]"
+    REC_END_TOKEN = "[REC_END]"
+    SEP_TOKEN = "[SEP]"
+    PLACEHOLDER_TOKEN = "[MOVIE_ID]"
+    gpt_tokenizer.add_tokens([REC_TOKEN, REC_END_TOKEN, SEP_TOKEN, PLACEHOLDER_TOKEN])
+    gpt2_model.resize_token_embeddings(len(gpt_tokenizer)) 
+
+
+    items_db_path = args.kb_path
+    items_db = torch.load(items_db_path)
+
+    universal_model =  C_UniversalCRSModel(
+        gpt2_model, 
+        bert_model_recall, 
+        bert_model_rerank, 
+        gpt_tokenizer, 
+        bert_tokenizer, 
+        device, 
+        items_db, 
+        rec_token_str=REC_TOKEN, 
+        rec_end_token_str=REC_END_TOKEN
+    )
+    
+    ########## Loading Weights for the Model to generate ###############
+    universal_model.load_state_dict(torch.load(CKPT,map_location=device))
+    universal_model.language_model = universal_model.language_model.to(device)
+
+
+    return universal_model.language_model, gpt_tokenizer
+
 def main():
     args = options()
     device = "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu"
@@ -116,21 +178,16 @@ def main():
     if args.seed != -1:
         torch.manual_seed(args.seed)
         np.random.seed(args.seed)
-    # Load pretrained model
-    model = GPT2LMHeadModel.from_pretrained(
-        args.pretrained_model, output_hidden_states=True,
-        resid_pdrop=0, embd_pdrop=0, attn_pdrop=0, summary_first_dropout=0)
-    model.to(device)
-
-
+    
+    # model, tokenizer = load_pretrained_model(args,device) 
+    model, tokenizer = load_my_model(args,device)
+   
     model.eval()
     # Freeze GPT-2 weights
     for param in model.parameters():
         param.requires_grad = False
 
-    # Load tokenizer
-    tokenizer = GPT2Tokenizer.from_pretrained(args.pretrained_model)
-
+    
     red = read_data(args)
 
     if "lexical" in args.mode:

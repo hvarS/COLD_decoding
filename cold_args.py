@@ -3,6 +3,8 @@ import argparse
 def options():
     parser = argparse.ArgumentParser()
     ## setting
+    parser.add_argument("--kb_path",type=str, help= 'Location of the knowledge base to use', default = None)
+
     parser.add_argument("--seed", type=int, default=-1)
     parser.add_argument("--no-cuda", action="store_true", help="no cuda")
     parser.add_argument("--verbose", action="store_true")

@@ -17,7 +17,7 @@ from util import (
 def eto(text, tokenizer, device):
     text_ = tokenizer.encode(text)
     text_t = torch.tensor(text_, device=device, dtype=torch.long)
-    text_onehot = one_hot(text_t, dimension=tokenizer.vocab_size)
+    text_onehot = one_hot(text_t, dimension = len(tokenizer))
 
     return text_, text_t, text_onehot
 
@@ -62,7 +62,7 @@ def decode(model, tokenizer, device, x="", z="", constraints=None, args=None, zz
         # zz_, zz_t : [len_zz]
         # zz_onehot : [len_zz, vocab_size]
 
-        z_mask = np.zeros([tokenizer.vocab_size])   # [vocab_size]
+        z_mask = np.zeros([len(tokenizer)])   # [vocab_size]
         z_mask[zz_] = 1.
         z_mask = torch.tensor(z_mask, device=device)
         z_mask = z_mask.unsqueeze(0).unsqueeze(0).repeat(args.batch_size, length, 1)
@@ -128,10 +128,11 @@ def decode(model, tokenizer, device, x="", z="", constraints=None, args=None, zz
     else:
         x_model_outputs = model(x_t[:, :-1])
         x_model_past = x_model_outputs.past_key_values
-        x_model_past = [_.detach() for _ in x_model_past]
+        # print(x_model_past[0])
+        # x_model_past = [_.detach() for _ in x_model_past]
 
     # For right to left model rl_reverse_index = [length-1, length-2,.....,0]
-    rl_reverse_index = torch.arange(y_logits.shape[1] - 1, -1, -1)
+    # rl_reverse_index = torch.arange(y_logits.shape[1] - 1, -1, -1)
 
     mask_t = None
 
