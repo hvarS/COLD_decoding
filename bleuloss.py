@@ -4,7 +4,7 @@ from torch import nn
 import torch.nn.functional as F
 
 
-def batch_log_bleulosscnn_ae(decoder_outputs, target_idx, ngram_list, trans_len=None, pad=0, weight_list=None):
+def batch_log_bleulosscnn_ae(decoder_outputs, target_idx, ngram_list, device=None, pad=0, weight_list=None):
     """
     decoder_outputs: [output_len, batch_size, vocab_size]
         - matrix with probabilityes  -- log probs
@@ -36,14 +36,14 @@ def batch_log_bleulosscnn_ae(decoder_outputs, target_idx, ngram_list, trans_len=
     out = cost_nll
     sum_gram = 0. #FloatTensor([0.])
 ###########################
-    zero = torch.tensor(0.0)
+    zero = torch.tensor(0.0).to(device)
     target_expand = target_idx.view(batch_size,1,1,-1).expand(-1,-1,output_len,-1)
     out = torch.where(target_expand==pad, zero, out)
 ############################
     for cnt, ngram in enumerate(ngram_list):
         if ngram > output_len:
             continue
-        eye_filter = torch.eye(ngram).view([1, 1, ngram, ngram])
+        eye_filter = torch.eye(ngram).view([1, 1, ngram, ngram]).to(device)
         term = nn.functional.conv2d(out, eye_filter)/ngram
         if ngram < decoder_outputs.size()[1]:
             term = term.squeeze(1)

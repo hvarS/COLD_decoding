@@ -26,8 +26,8 @@ python3 cold_decoding.py \
 	--large-noise-iters 50,500,1000,1500 \
 	--large_gs_std 1,0.5,0.1,0.05  \
 	--stepsize-ratio 1  \
-    --batch-size 1 \
-    --repeat-batch 8 \
+    --batch-size 32 \
+    --repeat-batch 1 \
     --print-every 200 \
     --input-file "./data/commongen/commongen.dev.jsonl" \
 	--output-dir "./data/commongen/" \
