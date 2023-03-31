@@ -25,6 +25,7 @@ from cold_args import options
 from decoder import decode
 from model.inductiveAttentionModel import GPT2InductiveAttentionHeadModel
 from model.mese import C_UniversalCRSModel
+from GPT2ForwardBackward import OpenGPT2LMHeadModel
 
 
 stop_words = set(stopwords.words('english'))
@@ -67,7 +68,7 @@ def read_data(args):
     return data, outfile, fw, fw_pretty
 
 
-def lexical_generation(red, model, tokenizer, device, args):
+def lexical_generation(red, model, model_back, tokenizer, device, args):
 
     data, outfile, fw, fw_pretty = red
 
@@ -97,7 +98,7 @@ def lexical_generation(red, model, tokenizer, device, args):
         text_candidates = []
         text_complete_candidates = []
         for _ in range(args.repeat_batch):
-            ppl_last, text, text_post = decode(model, tokenizer, device, x, z, None, args,
+            ppl_last, text, text_post = decode(model, model_back, tokenizer, device, x, z, None, args,
                                                zz=z_keywords)
             text_candidates.extend(text)
             text_complete_candidates.extend(text_post)
@@ -125,11 +126,19 @@ def load_pretrained_model(args, device):
         args.pretrained_model, output_hidden_states=True,
         resid_pdrop=0, embd_pdrop=0, attn_pdrop=0, summary_first_dropout=0)
     model.to(device)
+        # Freeze GPT-2 weights
+    for param in model.parameters():
+        param.requires_grad = False
 
     # Load tokenizer
     tokenizer = GPT2Tokenizer.from_pretrained(args.pretrained_model)
 
-    return model, tokenizer
+    model_back = OpenGPT2LMHeadModel.from_pretrained(
+        args.back_model, hidden_dropout_prob=0, attention_probs_dropout_prob=0, summary_first_dropout=0)
+    model_back.to(device)
+
+
+    return model, model_back, tokenizer
 
 
 def load_my_model(args, device):
@@ -171,10 +180,20 @@ def load_my_model(args, device):
     universal_model.load_state_dict(torch.load(CKPT,map_location=device))
 
     universal_model.annoy_base_constructor()
-    _ = universal_model.lm_expand_wtes_with_items_annoy_base()          
+    _ = universal_model.lm_expand_wtes_with_items_annoy_base()       
+
+    # Freeze GPT-2 weights
+    for param in universal_model.language_model.parameters():
+        param.requires_grad = False   
+    
+
+    model_back = OpenGPT2LMHeadModel.from_pretrained(
+        args.back_model, hidden_dropout_prob=0, attention_probs_dropout_prob=0, summary_first_dropout=0)
+    model_back.to(device)
+    
 
 
-    return universal_model.language_model, gpt_tokenizer
+    return universal_model.language_model, model_back, gpt_tokenizer
 
 def main():
     args = options()
@@ -186,18 +205,23 @@ def main():
         np.random.seed(args.seed)
     
     # model, tokenizer = load_pretrained_model(args,device) 
-    model, tokenizer = load_my_model(args,device)
+    model, model_back, tokenizer = load_my_model(args,device)
    
     model.eval()
     # Freeze GPT-2 weights
     for param in model.parameters():
         param.requires_grad = False
 
+
+    model_back.eval()
+    # Freeze GPT-2 weights
+    for param in model_back.parameters():
+        param.requires_grad = False
     
     red = read_data(args)
 
     if "lexical" in args.mode:
-        lexical_generation(red, model, tokenizer, device, args)
+        lexical_generation(red, model, model_back, tokenizer, device, args)
 
 
 if __name__ == "__main__":

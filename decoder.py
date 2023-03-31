@@ -1,5 +1,6 @@
 import torch 
 import numpy as np 
+import torch.nn.functional as F
 
 from util import (
     one_hot, 
@@ -8,6 +9,7 @@ from util import (
     top_k_filter_3d, 
     soft_forward, 
     soft_forward_xyz,
+    soft_backward,
     soft_nll, 
     batch_log_bleulosscnn_ae,
     decode_with_model_topk,
@@ -23,7 +25,7 @@ def eto(text, tokenizer, device):
     return text_, text_t, text_onehot
 
 
-def decode(model, tokenizer, device, x="", z="", constraints=None, args=None, zz=None):
+def decode(model, model_back, tokenizer, device, x="", z="", constraints=None, args=None, zz=None):
     '''
     x: left context   (prompt in lexical lexical task)
     z: optimization target  (original ending in counterfactual task)
@@ -133,7 +135,7 @@ def decode(model, tokenizer, device, x="", z="", constraints=None, args=None, zz
         # x_model_past = [_.detach() for _ in x_model_past]
 
     # For right to left model rl_reverse_index = [length-1, length-2,.....,0]
-    # rl_reverse_index = torch.arange(y_logits.shape[1] - 1, -1, -1)
+    rl_reverse_index = torch.arange(y_logits.shape[1] - 1, -1, -1)
 
     mask_t = None
 
@@ -164,8 +166,28 @@ def decode(model, tokenizer, device, x="", z="", constraints=None, args=None, zz
         lr_nll_loss = soft_nll(
             top_k_filter_3d(y_logits_t / args.output_lgt_temp, args.topk, extra_mask=z_mask),
             y_logits_ / args.input_lgt_temp)
+        
 
-        rl_nll_loss = lr_nll_loss
+        # Reverse GPT2 Pass
+        if args.lr_nll_portion == 1.0:
+            rl_nll_loss = lr_nll_loss
+        else:
+            yz_logits_rev = torch.flip(torch.cat([y_logits_, z_onehot], dim=1), [1])
+            yz_logits_rev_t = soft_backward(model_back, yz_logits_rev / 0.00001)
+            yz_logits_rev_rev_t = torch.flip(yz_logits_rev_t, [1])
+            yz_logits_rev_rev_t = yz_logits_rev_rev_t[:, :, 1:y_logits_.shape[-1] + 1]
+            yz_logits_rev_rev_t_ = yz_logits_rev_rev_t[:, :y_logits_.shape[1], :]
+
+            tmp_logits = yz_logits_rev_rev_t_
+            repetition_mask = torch.cat([F.softmax(tmp_logits[:, 1:, :], dim=-1),
+                                            torch.zeros_like(tmp_logits[:, -1:, :])], dim=1)
+            yz_logits_rev_rev_t_ = yz_logits_rev_rev_t_ - repetition_mask * 1e4
+            yz_logits_rev_rev_t_ = yz_logits_rev_rev_t_.detach()
+
+            rl_nll_loss = soft_nll(
+                top_k_filter_3d(yz_logits_rev_rev_t_ / args.rl_output_lgt_temp, args.rl_topk),
+                y_logits_ / args.input_lgt_temp)
+            
 
         if "lexical" in args.mode:
             soft_forward_y_ = (y_logits_.detach() / 0.3 - y_logits_).detach() + y_logits_

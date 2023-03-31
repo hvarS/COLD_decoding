@@ -24,7 +24,7 @@ python3 cold_decoding.py \
 	--large_gs_std 1,0.5,0.1,0.05  \
 	--stepsize-ratio 1  \
     --batch-size 1 \
-    --repeat-batch 8 \
+    --repeat-batch 1 \
     --print-every 200 \
     --input-file "./data/durecdial/durecdial2.dev.jsonl" \
 	--output-dir "./data/durecdial/" \
