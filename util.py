@@ -142,10 +142,8 @@ def initialize(model, x, length, temperature, device):
         # for the first iteration, `past` is None
         if past is None:
             x_last_token = x[:, -1:]    #[batch_size, 1]
-            print(model.device)
-            print(x_last_token)
             last_token_embedding = model.get_input_embeddings()(x_last_token)   # [batch_size, 1, 768 ]
-
+            
             # if the input length is longer than a single token
             if x.shape[1] > 1:
                 x_except_last_token = x[:, :-1]
@@ -200,6 +198,8 @@ def post_process(text_ids, model, max_length, length, tokenizer, device):
     text_so_far_all = []
     for bi in range(batch_size):
         text_complete = tokenizer.decode(text_ids_complete[bi].tolist())
+        text_complete = text_complete.replace('[REC]','')
+        text_complete = text_complete.replace('[REC_END]','')        
         text_complete = text_complete.replace('\n', ' ')
 
         # truncate to minimal complete text
@@ -490,18 +490,6 @@ def constraint_loss_all(logits, cs_onehot, cs_ids):
 
     return loss
 
-def _constraint_loss2(logits, cs_onehot):
-    '''
-    a re-implementation of `_constraint_loss` with a slightly different logic.
-    TODO: keep only one of these functions
-    '''
-    logits = logits.squeeze(0) # drop the empty dimension
-    cs_onehot = cs_onehot.float().squeeze(0) # drop the empty dimension and change into float (since torch matrix multiplication does not support integers)
-    cs_onehot = torch.transpose(cs_onehot, 0, 1)
-    selected_logits = torch.matmul(logits, cs_onehot) # dim: length x # of constraints
-    max_logits_per_constraint, _ = selected_logits.max(0) # select the highest logits for each constraint
-    loss = - max_logits_per_constraint.sum() / selected_logits.size(1)
-    return loss
 
 def print_topk_stats(logits, tokenizer):
     logits_lg, topk_index_y = torch.topk(F.softmax(logits[0, :3, :], dim=-1), 3)

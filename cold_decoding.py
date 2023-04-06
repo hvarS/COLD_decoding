@@ -94,7 +94,6 @@ def lexical_generation(red, model, model_back, tokenizer, device, args):
         z_keywords = ". " + z_keywords
 
 
-
         text_candidates = []
         text_complete_candidates = []
         for _ in range(args.repeat_batch):

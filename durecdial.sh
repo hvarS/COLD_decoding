@@ -4,7 +4,7 @@ python3 cold_decoding.py \
     --kb_path ../KBConvRec/mese_baseline/data/kb/durecdial2_db \
 	--pretrained_model ../KBConvRec/mese_baseline/runs/new_model_rec.pt  \
 	--init-temp 1 \
-    --length 10 \
+    --length 40 \
 	--max-length 40 \
 	--num-iters 2000 \
 	--min-iters 1000 \

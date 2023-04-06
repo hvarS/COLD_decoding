@@ -104,23 +104,17 @@ def decode(model, model_back, tokenizer, device, x="", z="", constraints=None, a
 
     assert args.prefix_length <= 0  # Otherwise not compatible with batch mode
 
-    if args.prefix_length > 0:
-        prefix_logits = torch.nn.Parameter(
-            torch.rand(x_onehot.shape[0], args.prefix_length, x_onehot.shape[2], dtype=init_logits.dtype,
-                       device=device))
-    # y_logits: [batch_size, length, vocab_size]
-    y_logits = init_logits
-    epsilon = torch.nn.Parameter(torch.zeros_like(y_logits))
-    if args.prefix_length > 0:
-        optim = torch.optim.Adam([epsilon, prefix_logits], lr=args.stepsize)
-    else:
-        optim = torch.optim.Adam([epsilon], lr=args.stepsize)
+    # y_hat_logits: [batch_size, length, vocab_size]
+    y_hat_logits = init_logits  #Soft Token Representation
+    # y_hat_logits = init_logits  #Soft Tokens
+
+    epsilon = torch.nn.Parameter(torch.zeros_like(y_hat_logits))
+    optim = torch.optim.Adam([epsilon], lr=args.stepsize)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, step_size=args.stepsize_iters,
                                                 gamma=args.stepsize_ratio)
 
     frozen_len = args.frozen_length
 
-    y_logits_ = None
     noise_std = 0.0
 
     ## Encode x beforehand
@@ -135,48 +129,49 @@ def decode(model, model_back, tokenizer, device, x="", z="", constraints=None, a
         # x_model_past = [_.detach() for _ in x_model_past]
 
     # For right to left model rl_reverse_index = [length-1, length-2,.....,0]
-    rl_reverse_index = torch.arange(y_logits.shape[1] - 1, -1, -1)
+    rl_reverse_index = torch.arange(y_hat_logits.shape[1] - 1, -1, -1)
 
     mask_t = None
 
     for iter in range(args.num_iters):
         optim.zero_grad()
-        y_logits_ = y_logits + epsilon
+        y_hat_logits_updated = y_hat_logits + epsilon
 
-        soft_forward_y = y_logits_ / 0.001
+        soft_forward_y = y_hat_logits_updated / 0.001
+
         if args.straight_through:
             if mask_t is None:
-                soft_forward_y = (y_logits_.detach() / 0.001 - y_logits_).detach() + y_logits_  #[batch_size, length, vocab_size]
+                soft_forward_y = (y_hat_logits_updated.detach() / 0.001 - y_hat_logits_updated).detach() + y_hat_logits_updated  #[batch_size, length, vocab_size]
             else:
-                soft_forward_y = top_k_filter_3d(y_logits_, args.topk, mask=mask_t, extra_mask=z_mask) / 0.001
+                soft_forward_y = top_k_filter_3d(y_hat_logits_updated, args.topk, mask=mask_t, extra_mask=z_mask) / 0.001
 
         # soft_forward_x: [batch_size, 1, vocab_size]   Last token of x
         # soft_forward_y: [batch_size, length, vocab_size]
         # x_past: Context to start
-        y_logits_t = soft_forward(model, soft_forward_x, soft_forward_y, x_past=x_model_past)
+        y_hat_logits_t = soft_forward(model, soft_forward_x, soft_forward_y, x_past=x_model_past)
         # y_logits_t: [batch_size,length, vocab_size]
 
         if args.topk == 0:
             mask_t = None
         else:
-            _, indices_t = torch.topk(y_logits_t, args.topk)    #indices_t = [batch_size, length, topk]
-            mask_t = torch.zeros_like(y_logits_t).scatter_(2, indices_t, 1) #mask_t = [batch_size, length, vocab_size]
+            _, indices_t = torch.topk(y_hat_logits_t, args.topk)    #indices_t = [batch_size, length, topk]
+            mask_t = torch.zeros_like(y_hat_logits_t).scatter_(2, indices_t, 1) #mask_t = [batch_size, length, vocab_size]
 
         # Compute loss, gradients, and update.
         lr_nll_loss = soft_nll(
-            top_k_filter_3d(y_logits_t / args.output_lgt_temp, args.topk, extra_mask=z_mask),
-            y_logits_ / args.input_lgt_temp)
+            top_k_filter_3d(y_hat_logits_t / args.output_lgt_temp, args.topk, extra_mask=z_mask),
+            y_hat_logits_updated / args.input_lgt_temp)
         
 
         # Reverse GPT2 Pass
         if args.lr_nll_portion == 1.0:
             rl_nll_loss = lr_nll_loss
         else:
-            yz_logits_rev = torch.flip(torch.cat([y_logits_, z_onehot], dim=1), [1])
+            yz_logits_rev = torch.flip(torch.cat([y_hat_logits_updated, z_onehot], dim=1), [1])
             yz_logits_rev_t = soft_backward(model_back, yz_logits_rev / 0.00001)
             yz_logits_rev_rev_t = torch.flip(yz_logits_rev_t, [1])
-            yz_logits_rev_rev_t = yz_logits_rev_rev_t[:, :, 1:y_logits_.shape[-1] + 1]
-            yz_logits_rev_rev_t_ = yz_logits_rev_rev_t[:, :y_logits_.shape[1], :]
+            yz_logits_rev_rev_t = yz_logits_rev_rev_t[:, :, 1:y_hat_logits_updated.shape[-1] + 1]
+            yz_logits_rev_rev_t_ = yz_logits_rev_rev_t[:, :y_hat_logits_updated.shape[1], :]
 
             tmp_logits = yz_logits_rev_rev_t_
             repetition_mask = torch.cat([F.softmax(tmp_logits[:, 1:, :], dim=-1),
@@ -186,11 +181,11 @@ def decode(model, model_back, tokenizer, device, x="", z="", constraints=None, a
 
             rl_nll_loss = soft_nll(
                 top_k_filter_3d(yz_logits_rev_rev_t_ / args.rl_output_lgt_temp, args.rl_topk),
-                y_logits_ / args.input_lgt_temp)
+                y_hat_logits_updated / args.input_lgt_temp)
             
 
         if "lexical" in args.mode:
-            soft_forward_y_ = (y_logits_.detach() / 0.3 - y_logits_).detach() + y_logits_
+            soft_forward_y_ = (y_hat_logits_updated.detach() / 0.3 - y_hat_logits_updated).detach() + y_hat_logits_updated
             xyz_logits, xy_length = soft_forward_xyz(model, soft_forward_x, soft_forward_y_, z_onehot)
             # xyz_logits: [batch_size, len_x+length+len_z, vocab_size]
             # xy Length : len_x+length
@@ -209,7 +204,7 @@ def decode(model, model_back, tokenizer, device, x="", z="", constraints=None, a
             c_loss_1 = c_loss_1.view(args.batch_size, -1).mean(-1)
 
             c_loss_2 = batch_log_bleulosscnn_ae(
-                decoder_outputs=y_logits_.transpose(0, 1),
+                decoder_outputs=y_hat_logits_updated.transpose(0, 1),
                 target_idx=zz_t,
                 ngram_list=[1],
                 device= device
@@ -221,16 +216,19 @@ def decode(model, model_back, tokenizer, device, x="", z="", constraints=None, a
                + args.constraint_weight * c_loss
         loss = loss.mean()
 
+
         if iter < args.num_iters - 1:  # so that the mask_t at the last iteration will not change
             loss.backward()
             optim.step()
             scheduler.step()  # turn off the scheduler
             last_lr = scheduler.get_last_lr()[0]
 
+        # assert y_after == y_before, "Y Updated"
+         
         # Top K sampling 
         if args.verbose and ((iter + 1) % args.print_every == 0 or iter == 0 or iter + 1 == args.num_iters):
             text, _, _ = decode_with_model_topk(
-                model, y_logits_, args.topk, soft_forward_x, x_model_past, tokenizer, extra_mask=z_mask)
+                model, y_hat_logits_updated, args.topk, soft_forward_x, x_model_past, tokenizer, extra_mask=z_mask)
             for bi in range(args.batch_size):
                 if "lexical" in args.mode:
                     print(
@@ -274,15 +272,15 @@ def decode(model, model_back, tokenizer, device, x="", z="", constraints=None, a
                 if args.win_anneal_iters >= 0 and iter >= args.win_anneal_iters:
                     zeros = torch.zeros_like(noise)
                     noise_mix = torch.cat([zeros[:, :frozen_len], noise[:, frozen_len:]], dim=1)
-                    y_logits = y_logits + noise_mix
+                    y_hat_logits = y_hat_logits + noise_mix
                 else:
-                    y_logits = y_logits + noise
+                    y_hat_logits = y_hat_logits + noise
 
     # if args.wandb:
     #     wandb.finish()
 
     text, _, last_text_ids = decode_with_model_topk(
-        model, y_logits_, args.topk, soft_forward_x, x_model_past, tokenizer, extra_mask=z_mask)
+        model, y_hat_logits_updated, args.topk, soft_forward_x, x_model_past, tokenizer, extra_mask=z_mask)
 
     last_rank_loss = model(input_ids=last_text_ids, labels=last_text_ids).loss
     last_rank_loss = last_rank_loss.detach().clone().data.cpu().numpy()

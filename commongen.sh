@@ -7,7 +7,7 @@ python3 cold_decoding.py \
 	--mode lexical_generation \
 	--pretrained_model gpt2  \
 	--init-temp 1 \
-    --length 10 \
+    --length 20 \
 	--max-length 40 \
 	--num-iters 2000 \
 	--min-iters 1000 \
